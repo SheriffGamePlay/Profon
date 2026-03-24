@@ -152,14 +152,16 @@ var AlphaP = {
       }, 1000);
     },
     snow: function () {
-      $(document).snowfall(Lampa.Storage.field('alphap_snow') == true ? {
-        deviceorientation: true,
-        round: true,
-        maxSize: 10,
-        maxSpeed: 5,
-        flakeCount: 30,
-        flakeIndex: 9
-      } : 'clear');
+      if (typeof $.fn.snowfall === 'function') {
+        $(document).snowfall(Lampa.Storage.field('alphap_snow') == true ? {
+          deviceorientation: true,
+          round: true,
+          maxSize: 10,
+          maxSpeed: 5,
+          flakeCount: 30,
+          flakeIndex: 9
+        } : 'clear');
+      }
     },
     radio: function () {
       if (Lampa.Storage.get('alphap_radio')) {
