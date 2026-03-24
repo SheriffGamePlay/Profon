@@ -1,55 +1,77 @@
 
 (function () {
   'use strict';
-  if (window.__alphapBundleOnce) {
-    return;
-  }
+
+  if (window.__alphapBundleOnce) return;
   window.__alphapBundleOnce = true;
 
-  var Protocol = function Protocol() {
-    return window.location.protocol == 'https:' ? 'https://' : 'http://';
-  }
-  var TRASH_R = ['$$$####!!!!!!!', '^^^^^^##@', '@!^^!@#@@$$$$$', '^^#@@!!@#!$', '@#!@@@##$$@@'];
-  var version_alphap = '3.3', API = Protocol() + 'api.lampa.stream/', wsUrl = 'wss://alphap.tv/nws', type = '', jackets = {}, cards, ping_auth, manifest, menu_list = [], vip = true, leftAlphaPStatus = ' 💎 Infinite Access', logged = true, VAST_url = false;
-  
-  console.log('AlphaP', 'plugin', '[POST] LOADED - ' + Protocol() + 'lampa.stream');
-  // tracking removed
-  
-  var ALPHAP_WS_PLUGIN_DISABLED = false;
+  // ─── Helpers ────────────────────────────────────────────────────────────────
 
-  /* ─────────────────────────────────────────────
-   *  FREE_MODE — centralized bypass config
-   *  Set enabled = false to restore server-gating.
-   * ───────────────────────────────────────────── */
-  var FREE_MODE = {
-    enabled:            true,   // master switch
+  var Protocol = function () {
+    return window.location.protocol === 'https:' ? 'https://' : 'http://';
+  };
+
+  /** Calls fn() only when the Lampa runtime is fully available. */
+  function lampaReady(fn) {
+    if (typeof Lampa !== 'undefined' && Lampa.Storage) fn();
+  }
+
+  // ─── Module-level state ─────────────────────────────────────────────────────
+
+  var version_alphap = '3.3';
+  var API     = Protocol() + 'api.lampa.stream/';
+  var wsUrl   = 'wss://alphap.tv/nws';
+  var type    = '';
+  var jackets = {};
+  var cards;
+  var manifest;
+  var menu_list = [];
+  var vip    = true;
+  var logged = true;
+  var leftAlphaPStatus = ' 💎 Infinite Access';
+
+  // ─── CONFIG ─────────────────────────────────────────────────────────────────
+  /**
+   * Central configuration for AlphaP free/local mode.
+   * Set CONFIG.enabled = false to restore server-gated behaviour.
+   */
+  var CONFIG = {
+    enabled:  true,   // master switch
 
     // Auth & identity
     forceVip:           true,   // always treat user as VIP
     forceLogged:        true,   // always treat user as logged-in
-    fakeAuthSuccess:    true,   // auth() returns immediate success
+    fakeAuthSuccess:    true,   // auth() returns immediate local success
 
-    // Server control suppression
-    blockForcedReload:  true,   // ignore server-requested reload()
+    // Server-control suppression
+    blockForcedReload:  true,   // ignore server-requested window.location.reload()
     blockVersionCheck:  true,   // ignore server version-mismatch reload
-    blockLogoffReload:  true,   // ignore WS logoff→reload command
+    blockLogoffReload:  true,   // ignore WS logoff → reload
     blockIpBlock:       true,   // ignore block_ip flags from server
 
-    // Promo / upsell
-    suppressPremiumPopup: true, // don't show "AlphaP Premium" upsell modal
-    suppressNotices:    false,  // keep notification system (episode alerts etc.)
+    // UI
+    suppressPremiumPopup: true, // suppress upsell modal
+    suppressNotices:    false,  // keep episode / voice-track notifications
 
-    // Fake server response helper
-    fakeSuccess: function(extra) {
+    // WebSocket
+    wsDisabled:         false,  // set true to fully disable push WS
+
+    // Dev
+    debug:              false,  // set true to enable verbose console.log output
+
+    /** Returns a fake successful server response, optionally merged with extra. */
+    fakeSuccess: function (extra) {
       return Object.assign({ success: true, auth: true, vip: true, logged: true }, extra || {});
     }
   };
 
-  // Apply master switch — honour individual flags only when enabled
-  if (FREE_MODE.enabled) {
-    if (FREE_MODE.forceVip)    vip    = true;
-    if (FREE_MODE.forceLogged) logged = true;
+  // Apply forced state on startup
+  if (CONFIG.enabled) {
+    if (CONFIG.forceVip)    vip    = true;
+    if (CONFIG.forceLogged) logged = true;
   }
+
+  if (CONFIG.debug) console.log('AlphaP', 'v' + version_alphap, 'loaded');
 
 
 var AlphaP = {
@@ -104,10 +126,10 @@ var AlphaP = {
         };
       }
       //if(!IP) 
-      // IP collection removed
+      
       
       Lampa.Controller.listener.follow('toggle', function(e) {
-        if(e.name == 'select' && !(FREE_MODE.enabled && FREE_MODE.forceVip) && !vip) {
+        if(e.name == 'select' && !(CONFIG.enabled && CONFIG.forceVip) && !vip) {
           setTimeout(function() {
             if($('.selectbox .scroll__body div:eq(0)').html() && $('.selectbox .scroll__body div:eq(0)').html().indexOf('.land') >= 0) $('.selectbox .scroll__body div:eq(0)').remove();
           }, 10);
@@ -117,7 +139,7 @@ var AlphaP = {
       Lampa.Notice.addClass('alphap', mynotice);
       AlphaP.socketInit();
 
-      // FREE_MODE: auth server bypassed — vip/logged forced by config
+      // CONFIG: auth server bypassed — vip/logged forced by config
       
       setTimeout(function() {
         var m_reload = '<div id="MRELOAD" class="head__action selector m-reload-screen"><svg fill="#ffffff" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" stroke="#ffffff" stroke-width="0.4800000000000001"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"><path d="M4,12a1,1,0,0,1-2,0A9.983,9.983,0,0,1,18.242,4.206V2.758a1,1,0,1,1,2,0v4a1,1,0,0,1-1,1h-4a1,1,0,0,1,0-2h1.743A7.986,7.986,0,0,0,4,12Zm17-1a1,1,0,0,0-1,1A7.986,7.986,0,0,1,7.015,18.242H8.757a1,1,0,1,0,0-2h-4a1,1,0,0,0-1,1v4a1,1,0,0,0,2,0V19.794A9.984,9.984,0,0,0,22,12,1,1,0,0,0,21,11Z" fill="currentColor"></path></g></svg></div>';
@@ -187,7 +209,7 @@ var AlphaP = {
       Lampa.Params.select('source', sources, 'tmdb');
     },
     showAlphaPPremium: function () {
-      if (FREE_MODE.enabled && FREE_MODE.suppressPremiumPopup) return; // FREE_MODE: upsell suppressed
+      if (CONFIG.enabled && CONFIG.suppressPremiumPopup) return; // CONFIG: upsell suppressed
       var enabled = Lampa.Controller.enabled().name;
       Lampa.Modal.open({
         title: '',
@@ -357,7 +379,7 @@ var AlphaP = {
       //console.log(cards)
       load.createSource(true).then(function (ok) {
         timer.stop();
-        console.log('AlphaP', 'CardID: ' + cards.id, 'Loader is:', ok);
+        if (CONFIG.debug) console.log('AlphaP', 'CardID: ' + cards.id, 'Loader is:', ok);
         Lampa.Activity.active().activity.render().find('.view--alphap_online').html(Lampa.Lang.translate(ico + '<span>'+_this.title+'</span>'));
         
         _this.btn.on('hover:long', function () {
@@ -389,14 +411,14 @@ var AlphaP = {
         Noty(e);
         Lampa.Activity.active().activity.render().find('.view--alphap_online').css('opacity', '0.3').html(Lampa.Lang.translate(ico + '<span>'+_this.title+'</span>'));
         timer.stop();
-        console.log('AlphaP', 'Loader is:', e);
+        if (CONFIG.debug) console.log('AlphaP', 'Loader is:', e);
       });
     },
     collections: function () {
       var menu_item = $('<li class="menu__item selector" data-action="collection"><div class="menu__ico"><img src="./img/icons/menu/catalog.svg"/></div><div class="menu__text">' + Lampa.Lang.translate('title_collections') + '</div></li>');
       if (Lampa.Storage.get('alphap_collection')) $('body').find('.menu .menu__list li:eq(3)').after(menu_item)
       else $('body').find('[data-action="collection"]').remove();
-      ///* anti-tamper eval removed */
+      //
       menu_item.on('hover:enter', function () {
         var item = [{
         /*title: Lampa.Lang.translate('menu_collections')+' '+Lampa.Lang.translate('title_on_the')+ ' filmix',
@@ -439,7 +461,7 @@ var AlphaP = {
         });
       });
     },
-    getIp: function () { /* IP collection removed */ },
+    getIp: function () {  },
 
     Timer: function (tpl) {
       var self = this;
@@ -522,8 +544,7 @@ var AlphaP = {
         var count_eps_last_seas = card.seasons.find(function (eps) {
           return eps.season_number == last_seria_inseason;
         }).episode_count;
-        // anti-tamper eval removed
-        
+
         if (card.next_episode_to_air) {
           var add_ = '<b>' + last_seria;
           var notices = Lampa.Storage.get('account_notice', []).filter(function (n) {
@@ -568,7 +589,6 @@ var AlphaP = {
 
           //if (Lampa.Storage.field('alphap_rating') && $('.rate--kp', Lampa.Activity.active().activity.render()).hasClass('hide') && !$('.wait_rating', Lampa.Activity.active().activity.render()).length) 
           if (['filmix', 'pub'].indexOf(card.source) == -1 && Lampa.Storage.field('alphap_rating'))
-          // anti-tamper eval removed
           $('.info__rate', Lampa.Activity.active().activity.render()).after('<div style="width:2em;margin-top:1em;margin-right:1em" class="wait_rating"><div class="broadcast__scan"><div></div></div></div>');
           if($('.cardify__right', Lampa.Activity.active().activity.render()).length && !$('.rating--alphap', Lampa.Activity.active().activity.render()).length) {
             $('.cardify__right', Lampa.Activity.active().activity.render()).append('<div style="position:absolute; bottom: -55%; right: 0;" class="full-start-new__rate-line rating--alphap"><div style="width:2em;margin-top:1em;margin-right:1em" class="wait_rating"><div class="broadcast__scan"><div></div></div></div><div class="full-start__rate rate--imdb hide"><div></div><div>IMDB</div></div><div class="full-start__rate rate--kp hide"><div></div><div>KP</div></div></div>');
@@ -808,7 +828,7 @@ var AlphaP = {
       }
     },
     socketInit: function () {
-      if (typeof ALPHAP_WS_PLUGIN_DISABLED !== 'undefined' && ALPHAP_WS_PLUGIN_DISABLED) {
+      if (CONFIG.wsDisabled) {
         return;
       }
       if (!window.__ALPHAP_WS__) {
@@ -927,10 +947,10 @@ var AlphaP = {
           clearTimeout(st.timeout);
           if (!st.wsOpenedOnce) {
             st.wsOpenedOnce = true;
-            console.log('AlphaP', 'WS подключено', wsUrl);
+            if (CONFIG.debug) console.log('AlphaP', 'WS подключено', wsUrl);
           } else {
             st.wsReconnectCount = (st.wsReconnectCount || 0) + 1;
-            console.log('AlphaP', 'WS переподключено', '#' + st.wsReconnectCount);
+            if (CONFIG.debug) console.log('AlphaP', 'WS переподключено', '#' + st.wsReconnectCount);
           }
           wsAlphaPTimerStart();
           st.sendAlphaPStartTimer = setTimeout(function () {
@@ -966,7 +986,7 @@ var AlphaP = {
           if (wp && wp.ru && result.type === wp.ru) return;
           if (result && result.method == 'logoff') {
             Lampa.Noty.show(Lampa.Lang.translate('alphap_ws_logoff_reload'));
-            if (!(FREE_MODE.enabled && FREE_MODE.blockLogoffReload)) {
+            if (!(CONFIG.enabled && CONFIG.blockLogoffReload)) {
               setTimeout(function() { window.location.reload(); }, 1000);
             }
             return;
@@ -975,7 +995,7 @@ var AlphaP = {
             var msg = result;
             var kind = msg.kind || msg.sub;
             try {
-              console.log('AlphaP', 'WS push', kind, msg);
+              if (CONFIG.debug) console.log('AlphaP', 'WS push', kind, msg);
             } catch (eLog) {}
             if (kind === 'notice' || kind === 'episode_notice') {
               AlphaP.Notice(msg.payload || msg);
@@ -1004,7 +1024,7 @@ var AlphaP = {
               return;
             }
             try {
-              console.log('AlphaP', 'WS push unknown kind', kind);
+              if (CONFIG.debug) console.log('AlphaP', 'WS push unknown kind', kind);
             } catch (eUnk) {}
           }
         });
@@ -1012,13 +1032,13 @@ var AlphaP = {
       connect();
     },
     auth: function() {
-      if (FREE_MODE.enabled && FREE_MODE.fakeAuthSuccess) {
-        // FREE_MODE: fake server auth — return immediate success
+      if (CONFIG.enabled && CONFIG.fakeAuthSuccess) {
+        // CONFIG: fake server auth — return immediate success
         vip    = true;
         logged = true;
-        return FREE_MODE.fakeSuccess();
+        return CONFIG.fakeSuccess();
       }
-      // real auth would go here
+      
     },
     
     balansers: function() {
@@ -1174,8 +1194,11 @@ var AlphaP = {
         return API + 'subscr/' + movieId;
       },
       showManager: function(movieId, movieTitle, load) {
-        if (!user_id) return Lampa.Noty.show(Lampa.Lang.translate('alphap_voice_subscribe_error'));
-        
+        // In local mode there is no server auth → subscriptions are server-side only.
+        if (CONFIG.enabled && CONFIG.fakeAuthSuccess) {
+          Lampa.Noty.show(Lampa.Lang.translate('alphap_voice_subscribe_error'));
+          return;
+        }
         if (load) this.load = load;
         if (movieId) this.movieId = movieId;
         if (movieTitle) this.movieTitle = movieTitle;
@@ -1190,9 +1213,10 @@ var AlphaP = {
           Lampa.Loading.stop();
 
           if (data && data.success && data.voices) {
-            AlphaP.Subscr.showVoiceSelectionModal(data.voices, user_id, AlphaP.Subscr.movieId, AlphaP.Subscr.movieTitle);
+            AlphaP.Subscr.showVoiceSelectionModal(data.voices, null, AlphaP.Subscr.movieId, AlphaP.Subscr.movieTitle);
           } else {
             Lampa.Noty.show(Lampa.Lang.translate('alphap_voice_subscribe_error'));
+
           }
         }, function (a, c) {
           Lampa.Loading.stop();
@@ -1683,7 +1707,7 @@ var AlphaP = {
     user_dev: 'app_lang=ru_RU&user_dev_apk=2.2.13&user_dev_id=' + Lampa.Utils.uid(16) + '&user_dev_name=AlphaP&user_dev_os=11&user_dev_vendor=Lampa&user_dev_token=',
     useProxy: window.location.protocol === 'https:',
     add_new: function () {
-      // FREE_MODE: device-code auth modal removed — no-op
+      // CONFIG: device-code auth modal removed — no-op
     },
     showStatus: function (ch) {
       var status = Lampa.Storage.get("filmix_status", '{}');
@@ -1700,19 +1724,19 @@ var AlphaP = {
       else $('.settings-param__descr:eq(0)').html(info);
     },
     checkPro: function (token, call, err) {
-      // FREE_MODE: fake PRO status — no network call
-      if (FREE_MODE.enabled && FREE_MODE.fakeAuthSuccess) {
+      // CONFIG: fake PRO status — no network call
+      if (CONFIG.enabled && CONFIG.fakeAuthSuccess) {
         window.FX.max_qualitie = 1080;
         window.FX.auth = true;
         window.FX.is_max_qualitie = true;
-        var fakeData = FREE_MODE.fakeSuccess({ user_data: { login: 'AlphaP', is_pro: true, is_pro_plus: false, pro_date: '2099-12-31', foto: './img/logo-icon.svg' } });
+        var fakeData = CONFIG.fakeSuccess({ user_data: { login: 'AlphaP', is_pro: true, is_pro_plus: false, pro_date: '2099-12-31', foto: './img/logo-icon.svg' } });
         Lampa.Storage.set('filmix_status', fakeData.user_data);
         Lampa.Storage.set('filmix_log', 'true');
         if (typeof call == 'function') call(fakeData);
         Filmix.showStatus();
         return;
       }
-      // fallback real call (unreachable in FREE_MODE):
+      // fallback real call (unreachable in CONFIG):
       this.network.clear();
       this.network.timeout(8000);
       token = token ? token : Lampa.Storage.get('filmix_token');
@@ -1959,7 +1983,7 @@ var AlphaP = {
       });
     },
     checkAdd: function () {
-      // FREE_MODE: device-code auth modal removed — no-op
+      // CONFIG: device-code auth modal removed — no-op
     },
 
     check: function (url, call, ar) {
@@ -2009,10 +2033,10 @@ var AlphaP = {
       } else window.open(url, '_blank');
     },
     Auth_pub: function () {
-      // FREE_MODE: KinoPub device-code auth removed — no-op
+      // CONFIG: KinoPub device-code auth removed — no-op
     },
     checkAdd: function () {
-      // FREE_MODE: KinoPub token-polling modal removed — no-op
+      // CONFIG: KinoPub token-polling modal removed — no-op
     },
     refreshTok: function () {
       this.network.silent(Pub.baseurl + 'oauth2/token', function (json) {
@@ -2437,7 +2461,7 @@ function component(object) {
     })["catch"](function (e) {
       if (e.vip) return _this.noConnectToServer(e);
       if (e && !e.find) {
-        console.log('AlphaP', 'init', 'Error', e);
+        if (CONFIG.debug) console.log('AlphaP', 'init', 'Error', e);
         Lampa.Noty.show('AlphaP ОШИБКА ОНЛАЙН [init] -> ' + (e.message && e.message || e.decode_error || e.error));
         files.appendHead(filter.render());
         _this.empty();
@@ -2469,7 +2493,7 @@ function component(object) {
         //_this.loading(true);
         _this.search();
       }).catch(function(e) {
-        console.log('AlphaP', 'Cache setup failed, doing full reload', e);
+        if (CONFIG.debug) console.log('AlphaP', 'Cache setup failed, doing full reload', e);
         Lampa.Activity.replace();
       });
     } else Lampa.Activity.replace();
@@ -2600,7 +2624,7 @@ function component(object) {
         return reject('No cache available');
       }
       
-      console.log('AlphaP', 'Setup sources from cache:', balanser);
+      if (CONFIG.debug) console.log('AlphaP', 'Setup sources from cache:', balanser);
       
       // Восстанавливаем данные источников
       filter_find = {
@@ -2768,7 +2792,7 @@ function component(object) {
       network.timeout(15000);
       network.silent(url, function (json) {
         if (json.vers && typeof version_alphap !== 'undefined' && json.vers !== version_alphap) {
-          if (!(FREE_MODE.enabled && FREE_MODE.blockVersionCheck)) {
+          if (!(CONFIG.enabled && CONFIG.blockVersionCheck)) {
             window.location.reload();
           }
           return;
@@ -2879,7 +2903,7 @@ function component(object) {
     return play;
   };
   this.checkHashR = function (params) {
-    console.log('AlphaP', 'checkHash:', balanser, object.search + ' - ', params.title || params.url || 'unknown')
+    if (CONFIG.debug) console.log('AlphaP', 'checkHash:', balanser, object.search + ' - ', params.title || params.url || 'unknown')
     var _this = this;
     return new Promise(function (resolve, reject) {
       var xhr = new XMLHttpRequest();
@@ -2888,19 +2912,19 @@ function component(object) {
       xhr.onreadystatechange = function () {
         if (xhr.readyState === 2) {
           if (xhr.status >= 200 && xhr.status < 300) {
-            console.log('AlphaP', 'checkHash', ' - OK', xhr.status);
+            if (CONFIG.debug) console.log('AlphaP', 'checkHash', ' - OK', xhr.status);
             resolve(params);
           } else if (xhr.status >= 300 && xhr.status < 400) {
             var redirectUrl = xhr.getResponseHeader('Location');
             if (redirectUrl) {
-              console.log('AlphaP', 'checkHash redirect:', redirectUrl);
+              if (CONFIG.debug) console.log('AlphaP', 'checkHash redirect:', redirectUrl);
               _this.checkHashR(redirectUrl).then(resolve).catch(reject);
             } else {
-              console.log('AlphaP', 'checkHash redirect - ERROR:', xhr.status);
+              if (CONFIG.debug) console.log('AlphaP', 'checkHash redirect - ERROR:', xhr.status);
               reject(Lampa.Lang.translate('error_prefix') + xhr.status);
             }
           } else {
-            console.log('AlphaP', 'checkHash - ERROR:', xhr.status);
+            if (CONFIG.debug) console.log('AlphaP', 'checkHash - ERROR:', xhr.status);
             reject(Lampa.Lang.translate('error_prefix') + xhr.status);
           }
           xhr.abort();
@@ -2910,11 +2934,11 @@ function component(object) {
         params.url = params.url_reserve;
         params.qualitys = params.quality_reserve;
 
-        console.log('AlphaP', 'checkHash: ', balanser, ' - play reserve_url > ', params.url_reserve || 'no reserve');
+        if (CONFIG.debug) console.log('AlphaP', 'checkHash: ', balanser, ' - play reserve_url > ', params.url_reserve || 'no reserve');
         resolve(params);
       };
       xhr.onerror = function (e) {
-        console.log('AlphaP', 'Error', balanser, 'checkHash status:', xhr.status, e)
+        if (CONFIG.debug) console.log('AlphaP', 'Error', balanser, 'checkHash status:', xhr.status, e)
         reject(Lampa.Lang.translate('error_occurred'));
       };
       xhr.send(null);
@@ -3169,7 +3193,7 @@ function component(object) {
         xhr.onerror = function (e) {
           if (xhr.status === 0 && !retryAttempt) {
             retryAttempt = true;
-            console.log('AlphaP', 'loadedZIP', 'retry');
+            if (CONFIG.debug) console.log('AlphaP', 'loadedZIP', 'retry');
             if (url) downloadFromUrl(url.replace('https://www.opensubtitles.org/download/s/', 'https://www.opensubtitles.org/ru/download/s/').replace('https://www.opensubtitles.org/ru/subtitleserve/sub/', 'https://dl.opensubtitles.org/ru/download/sub/')); else reject(new Error(Lampa.Lang.translate('error_archive_url_empty')));
           } else reject(new Error(Lampa.Lang.translate('error_archive_load_simple')));
         };
@@ -3293,14 +3317,14 @@ function component(object) {
       network.silent(API + 'loadedInf', function (json) {
         if (json.serial) {
           _this.downloadAndUploadArchive(json.url, id, imdb, season, episode, null).then(function (data) {
-            console.log('AlphaP', 'loadedInf', (imdb || id), title, ' - загружены успешно:', data);
+            if (CONFIG.debug) console.log('AlphaP', 'loadedInf', (imdb || id), title, ' - загружены успешно:', data);
           }).catch(function (error) { console.error('Error:', error); });
         } else if (json.film) {
           for (var key in json.data) {
             if (json.data.hasOwnProperty(key)) {
               _this.downloadAndUploadArchive(json.data[key], id, imdb, null, null, key)
                 .then(function (data) {
-                  console.log('AlphaP', 'loadedInf', (imdb || id), key + ' загружен успешно:', data);
+                  if (CONFIG.debug) console.log('AlphaP', 'loadedInf', (imdb || id), key + ' загружен успешно:', data);
                 })
                 .catch(function (error) {
                   console.error('AlphaP', 'loadedInf', (imdb || id), title, ' - Ошибка при загрузке языка - ' + key, error);
@@ -3336,7 +3360,7 @@ function component(object) {
               if (json.all.hasOwnProperty(lang)) {
                 _this.downloadAndUploadArchiveV3(json.all[lang], id, imdb, season, episode, lang.toLowerCase())
                   .then(function (data) {
-                    console.log('AlphaP', 'loadedInfV3', (imdb || id), title, ' - ' + lang + ' загружен успешно:', data);
+                    if (CONFIG.debug) console.log('AlphaP', 'loadedInfV3', (imdb || id), title, ' - ' + lang + ' загружен успешно:', data);
                   })
                   .catch(function (err) {
                     console.error('AlphaP', 'loadedInfV3', (imdb || id), title, ' - ' + lang + ' ошибка:', err);
@@ -3346,7 +3370,7 @@ function component(object) {
           } else if (json.url) {
             // Если нет all, грузим только по url
             _this.downloadAndUploadArchiveV3(json.url, id, imdb, season, episode, null).then(function (data) {
-              console.log('AlphaP', 'loadedInfV3', (imdb || id), title, ' - загружены успешно:', data);
+              if (CONFIG.debug) console.log('AlphaP', 'loadedInfV3', (imdb || id), title, ' - загружены успешно:', data);
             }).catch(function (error) { 
               console.error('Error V3:', error);
             });
@@ -3356,7 +3380,7 @@ function component(object) {
             if (json.data.hasOwnProperty(key)) {
               _this.downloadAndUploadArchiveV3(json.data[key], id, imdb, null, null, key.toLowerCase())
                 .then(function (data) {
-                  console.log('AlphaP', 'loadedInfV3', (imdb || id), key + ' загружен успешно:', data);
+                  if (CONFIG.debug) console.log('AlphaP', 'loadedInfV3', (imdb || id), key + ' загружен успешно:', data);
                 })
                 .catch(function (error) {
                   console.error('AlphaP', 'loadedInfV3', (imdb || id), title, ' - Ошибка при загрузке языка - ' + key, error);
@@ -4184,7 +4208,7 @@ function component(object) {
         this.similars(extract.results);
       } else if (json.vip || json.error) return this.noConnectToServer(json);
       else if (!items || !Lampa.Arrays.getKeys(items).length) {
-        console.log('AlphaP', 'items NULL', items);
+        if (CONFIG.debug) console.log('AlphaP', 'items NULL', items);
         return this.doesNotAnswer(object.search);
       } else {
         if (extract && extract.season && extract.season.length) {
@@ -4640,7 +4664,7 @@ function component(object) {
         } else if (!Lampa.Arrays.getKeys(items).length) this.empty();
       }
     } catch (e) {
-      console.log('AlphaP', 'parse error', e);
+      if (CONFIG.debug) console.log('AlphaP', 'parse error', e);
       Lampa.Noty.show('AlphaP ОШИБКА ОНЛАЙН parse -> ' + e);
       this.doesNotAnswer();
       this.activity.loader(false);
@@ -6186,7 +6210,7 @@ function component(object) {
           title: Lampa.Lang.translate('more'),
           separator: true
         });
-        if ((FREE_MODE.enabled && FREE_MODE.forceLogged || Lampa.Account.logged()) && params.element && typeof params.element.season !== 'undefined' && params.element.translate_voice) {
+        if ((CONFIG.enabled && CONFIG.forceLogged || Lampa.Account.logged()) && params.element && typeof params.element.season !== 'undefined' && params.element.translate_voice) {
           menu.push({
             title: Lampa.Lang.translate('alphap_voice_subscribe'),
             subscribe: true
@@ -7685,7 +7709,7 @@ function component(object) {
       key: "authBody",
       value: function authBody() {
         return {
-                    /* uid tracking removed */
+                    
         };
       }
     }, {
@@ -9897,7 +9921,7 @@ function component(object) {
       key: "sort",
       value: function sort() {
         var sort_type = Lampa.Storage.field('iptv_favotite_sort');
-        if ((FREE_MODE.enabled && FREE_MODE.forceVip || Lampa.Account.hasPremium()) && sort_type !== 'add') {
+        if ((CONFIG.enabled && CONFIG.forceVip || Lampa.Account.hasPremium()) && sort_type !== 'add') {
           this.icons.sort(function (a, b) {
             if (sort_type == 'name') {
               return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
@@ -12647,7 +12671,7 @@ function component(object) {
       if (object.sourc == 'pub' && object.sour !== 'rezka') url = object.url + '?page=' + object.page + '&sort=' + (object.sort ? object.sort : 'views-') + '&access_token=' + Pub.token;
       else if ((object.sourc == 'rezka' || object.sour == 'rezka') && object.data && object.data.page) url = object.data.page;
       else url = page.replace(/(\d+)\/\?filter/, object.page+'/?filter');
-      /* anti-tamper eval removed */
+      
       network.silent(cors + url, function (result) {
         var data = _this2.card(result);
         object.data = data;
@@ -12778,7 +12802,7 @@ function component(object) {
               cache = {};
                 Lampa.Storage.set('my_colls', cache, true);
               if(Lampa.Storage.clean) Lampa.Storage.clean('my_colls');
-              console.log('AlphaP', 'clear','my_colls:',cache,Lampa.Storage.get('my_colls', {}))
+              if (CONFIG.debug) console.log('AlphaP', 'clear','my_colls:',cache,Lampa.Storage.get('my_colls', {}))
               
                 Lampa.Activity.push({
                   url: object.url,
@@ -12882,7 +12906,7 @@ function component(object) {
             });
           });
         });
-        /* anti-tamper eval removed */
+        
         info.find('.view--filter').on('hover:enter hover:click', function () {
           var enabled = Lampa.Controller.enabled().name;
           var items = [{
@@ -18998,7 +19022,7 @@ Lampa.SettingsApi.addParam({
       else onerror();
     };
 
-    /* anti-tamper eval removed */
+    
 
     var append = function append(opt, json) {
       var results = [];
@@ -19361,7 +19385,7 @@ Lampa.SettingsApi.addParam({
       oncomplite(items);
     };
 
-    /* anti-tamper eval removed */
+    
 
     var mov = params;
     mov.type = '';
@@ -19470,7 +19494,7 @@ Lampa.SettingsApi.addParam({
       }
     }, function (error) {
       if (error && (error.status === 404 || error.statusCode === 404 || error.statusText === 'error')) {
-        console.log('AlphaP', owner.source, '404 error detected, trying with proxy...');
+        if (CONFIG.debug) console.log('AlphaP', owner.source, '404 error detected, trying with proxy...');
         Filmix.network["native"](AlphaP.proxy(owner.source) + u, function (json) {
           if (json) {
             json.url = method;
@@ -19484,7 +19508,7 @@ Lampa.SettingsApi.addParam({
           if (onerror) onerror(proxyError);
         });
       } else {
-        console.log('AlphaP', 'SOURCE_FILMIX', error)
+        if (CONFIG.debug) console.log('AlphaP', 'SOURCE_FILMIX', error)
         if (onerror) onerror(error);
       }
     });
@@ -19712,7 +19736,7 @@ Lampa.SettingsApi.addParam({
         kp_rating: parseFloat(element.kp_rating || '0.0').toFixed(1),
       };
 
-      /* anti-tamper eval removed */
+      
 
       owner.get('comments/' + element.id, params, function (json) {
         if (json) {
@@ -19908,7 +19932,7 @@ Lampa.SettingsApi.addParam({
       oncomplite(items);
     };
 
-    /* anti-tamper eval removed */
+    
 
     this.get('search', params, function (json) {
       if (json) {
